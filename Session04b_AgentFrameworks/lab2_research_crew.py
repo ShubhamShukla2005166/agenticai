@@ -1,6 +1,7 @@
 import os
 import json
 from ddgs.ddgs import DDGS
+from ddgs.exceptions import DDGSException
 from dotenv import load_dotenv
 
 from crewai import Agent, Crew, Process, Task
@@ -10,7 +11,7 @@ from pendulum import now
 load_dotenv()
 
 MODEL = "gpt-4o-mini"
-TOPIC = "India's DPDP Act oblications and compliance requirements for businesses"
+TOPIC = "India's DPDP Act obligations for AI systems handling customer data"
 BREAK_CONTEXT = False
 
 
@@ -19,8 +20,12 @@ def build_search_tools():
     @tool("Web Search")
     def ddf_search(query: str) -> str:
         """Search the web for a topic and return the top results with titles and URLs."""
-        with DDGS() as ddgs:
-            hits = list(ddgs.text(query, max_results=5))
+        try:
+            with DDGS() as ddgs:
+                hits = list(ddgs.text(query, max_results=5))
+        except DDGSException:
+            return "No results found."
+
         if not hits:
             return "No results found."
 
@@ -32,7 +37,7 @@ def build_search_tools():
                 continue
             cleaned.append(f"{title}\n{url}")
 
-        return "\n\n".join(cleaned) if cl5eaned else "No usable results found."
+        return "\n\n".join(cleaned) if cleaned else "No usable results found."
 
     return ddf_search
 
@@ -43,7 +48,9 @@ researcher = Agent(
     role="Research Analyst",
     name="Research Analyst",
     goal="Find and cite source material on {TOPIC}",
-    backstory="You verify every claim against a source before you report it. You are a research analyst who is an expert in the field of {TOPIC}. You are tasked with finding and citing source material on {TOPIC}. You will use the Web Search tool to find relevant information and provide citations for your findings.",
+    backstory="""write 1-2 sentences establishing: verifies every claim
+                 against a source before reporting it; never presents an
+                 unsourced statement as fact""",
     tools=[ddf_search],
     llm = MODEL, max_iter=5,verbose=True,
 )
@@ -51,8 +58,9 @@ researcher = Agent(
 summarizer = Agent(
     role="Briefing Writer",
     name="Briefing Writer",
-    goal="Create a concise summary of the research findings on {TOPIC}",
-    backstory="You are a summarizer who is skilled at identifying the most important points from research material. You will use the information gathered by the Research Analyst to create a clear and concise summary.",
+    goal="Turn the researcher's findings into a 200-word brief on {TOPIC}",
+    backstory="""compresses findings into clear prose; never adds a fact
+                 that isn't in the findings it was handed""",
     tools=[],
     llm = MODEL, max_iter=5,verbose=True,
 )
@@ -60,8 +68,10 @@ summarizer = Agent(
 critic = Agent(
     role="Quality Critic",
     name="Quality Critic",
-    goal="Review and validate the research findings on {TOPIC}",
-    backstory="You are a critic who ensures the accuracy and reliability of the research material. You will review the findings from the Research Analyst and provide feedback to improve the quality of the information. You are hard to impress and will challenge the findings to ensure they are well-supported and credible.",
+    goal="""Check the brief's tone is professional" IF WEAK_CRITIC
+              ELSE "Flag any claim in the brief that is not supported by the findings""",
+    backstory="""hard to satisfy; treats a claim as unsupported until it has
+                 seen it in the findings""",
     tools=[],
     llm = MODEL, max_iter=5,verbose=True,
 )
