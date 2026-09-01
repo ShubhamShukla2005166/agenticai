@@ -18,11 +18,21 @@ def build_search_tools():
 
     @tool("Web Search")
     def ddf_search(query: str) -> str:
+        """Search the web for a topic and return the top results with titles and URLs."""
         with DDGS() as ddgs:
             hits = list(ddgs.text(query, max_results=5))
         if not hits:
             return "No results found."
-        return "\n\n".join([f"{hit['title']}\n{hit['url']}" for hit in hits])
+
+        cleaned = []
+        for hit in hits:
+            title = hit.get("title") or "Untitled result"
+            url = hit.get("url") or hit.get("href") or hit.get("link")
+            if not url:
+                continue
+            cleaned.append(f"{title}\n{url}")
+
+        return "\n\n".join(cleaned) if cl5eaned else "No usable results found."
 
     return ddf_search
 
@@ -30,6 +40,7 @@ def build_search_tools():
 ddf_search = build_search_tools()
 
 researcher = Agent(
+    role="Research Analyst",
     name="Research Analyst",
     goal="Find and cite source material on {TOPIC}",
     backstory="You verify every claim against a source before you report it. You are a research analyst who is an expert in the field of {TOPIC}. You are tasked with finding and citing source material on {TOPIC}. You will use the Web Search tool to find relevant information and provide citations for your findings.",
@@ -38,6 +49,7 @@ researcher = Agent(
 )
 
 summarizer = Agent(
+    role="Briefing Writer",
     name="Briefing Writer",
     goal="Create a concise summary of the research findings on {TOPIC}",
     backstory="You are a summarizer who is skilled at identifying the most important points from research material. You will use the information gathered by the Research Analyst to create a clear and concise summary.",
@@ -46,6 +58,7 @@ summarizer = Agent(
 )
 
 critic = Agent(
+    role="Quality Critic",
     name="Quality Critic",
     goal="Review and validate the research findings on {TOPIC}",
     backstory="You are a critic who ensures the accuracy and reliability of the research material. You will review the findings from the Research Analyst and provide feedback to improve the quality of the information. You are hard to impress and will challenge the findings to ensure they are well-supported and credible.",
@@ -84,12 +97,15 @@ def main():
     )
 
     start = now()
-    result = crew.kickoff(inputs={"topic": TOPIC})
-    wall_clock_seconds = round(now() - start, 1)
+    result = crew.kickoff(inputs={"topic": TOPIC, "TOPIC": TOPIC})
+    wall_clock_seconds = round((now() - start).total_seconds(), 1)
 
     print("\n\n=== RESULTS ===")
-    print(json.dumps(result, indent=2))
+    print(result)
+    print(f"\nWall clock time: {wall_clock_seconds} seconds")
 
     # prompt_tokens, completion_tokens, total_tokens = read_tokens(crew)
 
-main()
+
+if __name__ == "__main__":
+    main()
