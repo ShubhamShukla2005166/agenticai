@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import sys
 import textwrap
 from pathlib import Path
@@ -9,7 +8,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from langchain_core.documents import Document
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 load_dotenv()
@@ -35,35 +35,7 @@ def load_corpus() -> list[dict[str, str]]:
 CORPUS: list[dict[str, str]] = load_corpus()
 
 
-def _normalize_for_match(text: str) -> set[str]:
-    tokenized = re.sub(r"[^a-z0-9]+", " ", text.lower()).split()
-    return set(tokenized)
-
-
-class InMemoryVectorStore:
-    def __init__(self, docs: list[Document]):
-        self.docs = docs
-
-    def similarity_search(self, query: str, k: int = TOP_K) -> list[Document]:
-        if not self.docs:
-            return []
-
-        query_terms = _normalize_for_match(query)
-        if not query_terms:
-            return self.docs[:k]
-
-        scored: list[tuple[float, Document]] = []
-        for doc in self.docs:
-            doc_terms = _normalize_for_match(doc.page_content)
-            overlap = len(query_terms & doc_terms)
-            score = overlap / max(len(query_terms), 1)
-            scored.append((score, doc))
-
-        scored.sort(key=lambda item: item[0], reverse=True)
-        return [doc for _, doc in scored[:k]]
-
-
-def build_vectorstore() -> InMemoryVectorStore:
+def build_vectorstore():
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=400,
         chunk_overlap=50,
@@ -82,14 +54,17 @@ def build_vectorstore() -> InMemoryVectorStore:
             )
 
     print(f"Indexed {len(docs)} document chunks from {len(CORPUS)} documents.")
-    return InMemoryVectorStore(docs)
+    return FAISS.from_documents(
+        documents=docs,
+        embedding=OpenAIEmbeddings(model=EMBEDDING_MODEL),
+    )
 
 BASIC_RAG_PROMPT = """You are Meridian's internal policy assistant. Answer the following questions using the context below
 Context: {context}
 Question:{question}
 Answer:"""
 
-def basic_rag(store: InMemoryVectorStore, question: str) -> tuple[str, list[Document]]:
+def basic_rag(store, question: str) -> tuple[str, list[Document]]:
     print(f"Performing basic RAG for question: {question}")
     docs = store.similarity_search(question, k=TOP_K)
     context = "\n\n".join(
