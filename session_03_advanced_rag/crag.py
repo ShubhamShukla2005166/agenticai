@@ -172,7 +172,7 @@ def crag(store: FAISS, question:str) -> str:
         grades.append((doc, g))
         print(f" {doc.metadata['doc_id']:<8} {g.score:<11} {g.reason}")
 
-    relevant = [d for d. g in grades if g.score == "relevant"]
+    relevant = [d for d, g in grades if g.score == "relevant"]
     irrelevant = [d for d, g in grades if g.score == "irrelevant"]
 
     if relevant and not irrelevant:
@@ -205,6 +205,25 @@ def crag(store: FAISS, question:str) -> str:
     return generator_llm.invoke(CRAG_PROMPT.format(knowledge=knowledge, question=question)).content
 
 
+QUESTIONS = [
+    (
+        "Q2",
+        "How does Meridian's maternity leave compare with the statutory "
+        "minimum required under Indian law?",
+        "Half in the corpus, half not. Expect AMBIGUOUS: the internal policy "
+        "is retrievable, the statutory minimum is not. Watch what basic RAG "
+        "does with the half it cannot find.",
+    ),
+    (
+        "Q3",
+        "What do the RBI's digital lending guidelines require regarding "
+        "loan disbursal to borrower bank accounts?",
+        "Nothing in the corpus touches this. Expect INCORRECT — retrieval is "
+        "discarded entirely. This is where basic RAG is at its most dangerous, "
+        "because it will still return four confident-looking policy chunks.",
+    ),
+]
+
 def main():
 
     print("Building vector store from corpus...")
@@ -214,6 +233,10 @@ def main():
     basic_answer, basic_docs = basic_rag(store, "What is Meridian's policy on remote work?")
     print(f"Answer: {basic_answer}")
     print(f"Sources: {[doc.metadata for doc in basic_docs]}")
+
+    print("Corrective RAG (CRAG) example:")
+    crag_answer = crag(store, QUESTIONS[0][1])
+    print(f"\n" + textwrap.indent(textwrap.fill(crag_answer, width = 80), prefix='| '))
 
 if __name__ == "__main__":
     main()
